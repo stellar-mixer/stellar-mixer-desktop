@@ -41,7 +41,7 @@ soroban-client = "0.5.8"
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 tokio = { version = "1", features = ["full"] }
-treepir-client = { path = "../../treepir-client" }
+treepir-client = { git = "https://github.com/stellar-mixer/treepir-client.git", branch = "main" }
 ureq = "2"
 uuid = { version = "1", features = ["v4", "serde"] }
 zeroize = { version = "1", features = ["derive"] }
