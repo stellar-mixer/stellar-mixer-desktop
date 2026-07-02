@@ -1,0 +1,9 @@
+/target
+/src-tauri/target
+/dist
+/node_modules
+.env
+.DS_Store
+pnpm-lock.yaml
+package-lock.json
+yarn.lock
