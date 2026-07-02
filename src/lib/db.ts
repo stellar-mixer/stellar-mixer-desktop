@@ -17,7 +17,12 @@ class MixerDb extends Dexie {
   activity!: Table<ActivityItem, number>;
 
   constructor() {
-    super('stellar-mixer-desktop');
+    const profile = ((import.meta as any).env?.VITE_STELLAR_MIXER_PROFILE ?? '').trim() || 'default';
+    const dbName = profile === 'default'
+      ? 'stellar-mixer-desktop'
+      : `stellar-mixer-desktop-${profile}`;
+
+    super(dbName);
 
     this.version(1).stores({
       accounts: '&id, publicKey, name, updatedAt',

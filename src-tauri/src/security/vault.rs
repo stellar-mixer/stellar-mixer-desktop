@@ -4,7 +4,7 @@ use schnorrkel::Keypair;
 use std::fs;
 use std::path::PathBuf;
 
-use crate::config::{APP_SERVICE, VAULT_KEY};
+use crate::config::{app_service_name, vault_dir_name, VAULT_KEY};
 use crate::models::{ArchiveSyncState, VaultPayload};
 use crate::security::crypto::{decrypt_json, encrypt_json};
 use crate::security::identity::{new_identity_rsa_keypair, new_mixer_identity};
@@ -95,7 +95,9 @@ fn read_encrypted_vault() -> Result<String> {
 }
 
 fn vault_entry() -> Result<Entry> {
-    Entry::new(APP_SERVICE, VAULT_KEY)
+    let service = app_service_name();
+
+    Entry::new(&service, VAULT_KEY)
         .map_err(|error| anyhow!("failed to open OS keyring entry: {error}"))
 }
 
@@ -106,7 +108,7 @@ fn vault_file_path() -> Result<PathBuf> {
     Ok(PathBuf::from(home)
         .join("Library")
         .join("Application Support")
-        .join("Stellar Mixer")
+        .join(vault_dir_name())
         .join("vault.enc.json"))
 }
 

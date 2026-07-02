@@ -38,3 +38,31 @@ pub const WITHDRAW_GUEST_ID: [u32; 8] = [
 ];
 
 pub const DEFAULT_DEPOSIT_AMOUNT: u128 = 10_000_000;
+
+pub fn storage_profile() -> String {
+    std::env::var("STELLAR_MIXER_PROFILE")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "default".to_string())
+}
+
+pub fn app_service_name() -> String {
+    let profile = storage_profile();
+
+    if profile == "default" {
+        APP_SERVICE.to_string()
+    } else {
+        format!("{APP_SERVICE}-{profile}")
+    }
+}
+
+pub fn vault_dir_name() -> String {
+    let profile = storage_profile();
+
+    if profile == "default" {
+        "Stellar Mixer".to_string()
+    } else {
+        format!("Stellar Mixer/{profile}")
+    }
+}
