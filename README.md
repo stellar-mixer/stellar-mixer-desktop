@@ -5,11 +5,11 @@
 </p>
 
 <p align="center">
-  <img alt="Tauri" src="https://img.shields.io/badge/Tauri-2.x-24C8DB?logo=tauri&logoColor=white">
-  <img alt="React" src="https://img.shields.io/badge/React-UI-61DAFB?logo=react&logoColor=111">
-  <img alt="Rust" src="https://img.shields.io/badge/Rust-backend-black?logo=rust">
-  <img alt="Stellar" src="https://img.shields.io/badge/Stellar-testnet-7D00FF?logo=stellar&logoColor=white">
-  <img alt="RISC Zero" src="https://img.shields.io/badge/RISC%20Zero-ZK%20proofs-15C2CB">
+  <a href="https://tauri.app/"><img alt="Tauri" src="https://img.shields.io/badge/Tauri-2.x-24C8DB?logo=tauri&logoColor=white"></a>
+  <a href="https://react.dev/"><img alt="React" src="https://img.shields.io/badge/React-UI-61DAFB?logo=react&logoColor=111"></a>
+  <a href="https://www.rust-lang.org/"><img alt="Rust" src="https://img.shields.io/badge/Rust-backend-black?logo=rust"></a>
+  <a href="https://stellar.org/"><img alt="Stellar" src="https://img.shields.io/badge/Stellar-testnet-7D00FF?logo=stellar&logoColor=white"></a>
+  <a href="https://www.risczero.com/"><img alt="RISC Zero" src="https://img.shields.io/badge/RISC%20Zero-ZK%20proofs-15C2CB"></a>
 </p>
 
 ---
@@ -41,20 +41,20 @@ The main rule of the app is simple:
 flowchart LR
     User[User] --> Desktop[Stellar Mixer Desktop]
 
-    Desktop --> Vault[Encrypted local vault]
+    Desktop --> Vault[OS keyring encrypted vault]
     Desktop --> UIState[IndexedDB UI state]
 
     Desktop --> RPC[Stellar RPC]
-    Desktop --> TreePIR[TreePIR server]
     Desktop --> Archive[Event server]
+    Desktop --> TreePIR[TreePIR server]
     Desktop --> Wrap[Groth16 wrapper server]
+    Desktop --> Contract[Mixer contract]
 
-    RPC --> Chain[(Stellar testnet)]
+    RPC --> Chain[Stellar testnet ledger]
     Archive --> Chain
     TreePIR --> Chain
-    Desktop --> Contract[Mixer contract]
-    Wrap --> Desktop
     Contract --> Chain
+    Wrap --> Desktop
 ```
 
 The mixer is intentionally split into small parts:
@@ -473,11 +473,7 @@ node --version
 npm --version
 ```
 
-Official Tauri prerequisites:
-
-```text
-https://v2.tauri.app/start/prerequisites/
-```
+Official Tauri prerequisites: [https://v2.tauri.app/start/prerequisites/](https://v2.tauri.app/start/prerequisites/)
 
 ### macOS
 
@@ -554,51 +550,7 @@ This is slower to compile, but closer to production runtime performance.
 
 ---
 
-## Run isolated test profiles
 
-The app supports storage profiles. This is useful when testing multiple clean identities without deleting the default app state.
-
-```bash
-STELLAR_MIXER_PROFILE=test1 \
-VITE_STELLAR_MIXER_PROFILE=test1 \
-npm run tauri -- dev --release
-```
-
-Another isolated profile:
-
-```bash
-STELLAR_MIXER_PROFILE=test2 \
-VITE_STELLAR_MIXER_PROFILE=test2 \
-npm run tauri -- dev --release
-```
-
-Profile effect:
-
-| Profile | Backend vault | IndexedDB |
-|---|---|---|
-| `default` | `Stellar Mixer/vault.enc.json` | `stellar-mixer-desktop` |
-| `test1` | `Stellar Mixer/test1/vault.enc.json` | `stellar-mixer-desktop-test1` |
-| `test2` | `Stellar Mixer/test2/vault.enc.json` | `stellar-mixer-desktop-test2` |
-
----
-
-## Run multiple dev windows on different ports
-
-When running more than one Tauri dev instance, give each Vite dev server its own port and match Tauri `devUrl`.
-
-```bash
-STELLAR_MIXER_PROFILE=test1 \
-VITE_STELLAR_MIXER_PROFILE=test1 \
-npm run tauri -- dev --release --config '{"build":{"beforeDevCommand":"npm run dev -- --port 1421 --strictPort","devUrl":"http://localhost:1421"}}'
-```
-
-```bash
-STELLAR_MIXER_PROFILE=test2 \
-VITE_STELLAR_MIXER_PROFILE=test2 \
-npm run tauri -- dev --release --config '{"build":{"beforeDevCommand":"npm run dev -- --port 1422 --strictPort","devUrl":"http://localhost:1422"}}'
-```
-
----
 
 ## Build frontend only
 
@@ -653,34 +605,6 @@ open "src-tauri/target/release/bundle/macos/Stellar Mixer.app"
 
 ---
 
-## Clean local app state
-
-Default profile secret vault:
-
-```bash
-security delete-generic-password -s "stellar-mixer-desktop" -a "main-vault" 2>/dev/null || true
-rm -rf "$HOME/Library/Application Support/Stellar Mixer"
-```
-
-Default Tauri/WebKit/frontend state:
-
-```bash
-rm -rf "$HOME/Library/Application Support/com.samvinchester.stellar-mixer"
-rm -rf "$HOME/Library/Caches/com.samvinchester.stellar-mixer"
-rm -rf "$HOME/Library/WebKit/com.samvinchester.stellar-mixer"
-rm -rf "$HOME/Library/HTTPStorages/com.samvinchester.stellar-mixer"
-rm -rf "$HOME/Library/Saved Application State/com.samvinchester.stellar-mixer.savedState"
-rm -f "$HOME/Library/Preferences/com.samvinchester.stellar-mixer.plist"
-```
-
-For profile-specific vaults:
-
-```bash
-rm -rf "$HOME/Library/Application Support/Stellar Mixer/test1"
-security delete-generic-password -s "stellar-mixer-desktop-test1" -a "main-vault" 2>/dev/null || true
-```
-
----
 
 ## Useful development commands
 
@@ -731,13 +655,13 @@ However, normal network metadata such as IP address, timing, and request size ca
 
 | Repository | Purpose |
 |---|---|
-| `stellar-mixer-contract` | Minimal Soroban mixer contract. |
-| `stellar-mixer-risc0-prover` | Reproducible RISC Zero guest programs and image IDs. |
-| `treepir-core` | Generic TreePIR Rust core library. |
-| `treepir-client` | Generic TreePIR HTTP client. |
-| `stellar-mixer-treepir-server` | Mixer-specific TreePIR Merkle path server. |
-| `stellar-mixer-event-server` | Encrypted note and nullifier archive server. |
-| `risc0-groth16-wrapper-server` | RISC Zero receipt to Groth16 receipt wrapping service. |
+| [`stellar-mixer-contract`](https://github.com/stellar-mixer/stellar-mixer-contract) | Minimal Soroban mixer contract. |
+| [`stellar-mixer-risc0-prover`](https://github.com/stellar-mixer/stellar-mixer-risc0-prover) | Reproducible RISC Zero guest programs and image IDs. |
+| [`treepir-core`](https://github.com/stellar-mixer/treepir-core) | Generic TreePIR Rust core library. |
+| [`treepir-client`](https://github.com/stellar-mixer/treepir-client) | Generic TreePIR HTTP client. |
+| [`stellar-mixer-treepir-server`](https://github.com/stellar-mixer/stellar-mixer-treepir-server) | Mixer-specific TreePIR Merkle path server. |
+| [`stellar-mixer-event-server`](https://github.com/stellar-mixer/stellar-mixer-event-server) | Encrypted note and nullifier archive server. |
+| [`risc0-groth16-wrapper-server`](https://github.com/stellar-mixer/risc0-groth16-wrapper-server) | STARK-to-Groth16 wrapping service. |
 
 ---
 
