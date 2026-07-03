@@ -366,10 +366,6 @@ operating system keyring protection
 password-derived mixer vault encryption
 ```
 
-A passive attacker who only obtains app files or UI-state files should not get usable secret values. Offline brute force is made difficult because the vault password is not used directly as an encryption key; it is passed through a dedicated key-derivation step first.
-
-After unlock, decrypted values live inside the local Rust backend process memory while the app is running. They are not stored in the React frontend state or ordinary browser-style UI storage.
-
 ---
 
 ## Recovery and backup
