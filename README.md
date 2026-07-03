@@ -29,8 +29,6 @@ It provides a complete user flow for:
 - wrapping RISC Zero receipts into Groth16 receipts;
 - submitting verified operations to a minimal Soroban mixer contract.
 
-The main rule of the app is simple:
-
 > Private keys, note secrets, nullifiers, and raw vault contents stay local.
 
 ---
@@ -44,15 +42,13 @@ flowchart LR
     Desktop --> Vault[OS keyring encrypted vault]
 
     Desktop <--> RPC[Stellar RPC]
-    RPC <--> Contract[Mixer contract]
-
-    Contract <--> EventServer[Event server]
-    Contract <--> TreePIR[TreePIR server]
-
-    Desktop <--> EventServer
-    Desktop <--> TreePIR
+    Desktop <--> EventServer[Event server]
+    Desktop <--> TreePIR[TreePIR server]
     Desktop <--> Wrap[Groth16 wrapper server]
-    Wrap --> Desktop
+
+    RPC <--> Contract[Mixer contract]
+    EventServer <--> Contract
+    TreePIR <--> Contract
 ```
 
 The mixer is intentionally split into small parts:
@@ -208,11 +204,15 @@ Conceptually, a note contains private data:
 
 ```text
 amount
-owner or recipient identity material
+owner identity / recipient identity material
 random secret
 nullifier secret
 metadata needed to spend or recover the note
 ```
+
+Each note has an **owner**. In practical terms, that means only the holder of the correct Mixer Identity private key material can actually use that note as a valid input later.
+
+When a note is spent, the desktop proves ownership privately. It builds a RISC Zero proof locally and then wraps it into a Groth16 proof for the on-chain verifier. A valid proof can only be produced by someone who knows the correct private note data and the correct owner-side secret material.
 
 The desktop turns this private note data into a public commitment:
 
@@ -230,6 +230,7 @@ When a note is spent, the zero-knowledge proof shows:
 
 ```text
 I know a valid private note
+AND I control the owner-side secret material for that note
 AND its commitment exists in the Merkle tree
 AND the derived nullifier has not been used before
 AND the value accounting is correct
