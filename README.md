@@ -533,8 +533,6 @@ Default dev mode:
 npm run tauri -- dev
 ```
 
-If the project script is available:
-
 ```bash
 npm run tauri:dev
 ```
