@@ -76,6 +76,7 @@ export default function App() {
   const [pendingFeePayerTransfer, setPendingFeePayerTransfer] = useState<PendingFeePayerTransfer | undefined>();
   const [notesModalOpen, setNotesModalOpen] = useState(false);
   const [notes, setNotes] = useState<NoteView[]>([]);
+  const [incomingTransferNotes, setIncomingTransferNotes] = useState<NoteView[]>([]);
   const [historyTab, setHistoryTab] = useState<'operations' | 'raw'>('operations');
 
   const isBusy = busyOps > 0;
@@ -271,6 +272,32 @@ export default function App() {
 
     try {
       const report = await backend.syncArchive();
+      const receivedTransferNotes = report.receivedTransferNotes ?? [];
+
+      if (receivedTransferNotes.length > 0) {
+        setIncomingTransferNotes((prev) => {
+          const existing = new Set(prev.map((note) => note.id));
+          const fresh = receivedTransferNotes.filter((note) => !existing.has(note.id));
+
+          return [...fresh, ...prev].slice(0, 8);
+        });
+
+        await Promise.all(
+          receivedTransferNotes.map((note) =>
+            addActivity({
+              kind: 'transfer',
+              title: 'Incoming private note received',
+              detail: incomingTransferNoteDetail(note),
+              noteId: note.id,
+              outputNoteIds: [note.id],
+              leafIndex: note.leafIndex,
+              message: note.message,
+              createdAt: Date.now(),
+              status: 'success',
+            }),
+          ),
+        );
+      }
 
       if (report.importedNoteCount > 0 || report.spentNoteCount > 0) {
         await addActivity({
@@ -830,6 +857,40 @@ export default function App() {
           onOpenNotes={openNotes}
         />
 
+        {incomingTransferNotes.length > 0 && (
+          <section className="incoming-note-panel">
+            <div className="incoming-note-header">
+              <strong>New private note received</strong>
+              <span>{incomingTransferNotes.length}</span>
+            </div>
+
+            {incomingTransferNotes.map((note) => (
+              <article key={note.id} className="incoming-note-card">
+                <div>
+                  <strong>{note.amountXlm}</strong>
+                  <p>{incomingTransferNoteDetail(note)}</p>
+                </div>
+
+                <div className="incoming-note-actions">
+                  <button className="incoming-note-view-button" onClick={openNotes}>
+                    View notes
+                  </button>
+                  <button
+                    className="incoming-note-ok-button"
+                    onClick={() =>
+                      setIncomingTransferNotes((prev) =>
+                        prev.filter((item) => item.id !== note.id),
+                      )
+                    }
+                  >
+                    OK
+                  </button>
+                </div>
+              </article>
+            ))}
+          </section>
+        )}
+
         {pendingFeePayerWithdraw && (
           <div className="fee-payer-panel">
             <div>
@@ -967,6 +1028,29 @@ const EXTERNAL_TRANSFER_OUTPUT_PREFIX = 'external-transfer-recipient-note:';
 
 function externalTransferOutputId(txHash: string, recipientIdentity: string): string {
   return `${EXTERNAL_TRANSFER_OUTPUT_PREFIX}${txHash}:${recipientIdentity}`;
+}
+
+function incomingTransferNoteDetail(note: NoteView): string {
+  const parts = [`note ${shortNoteId(note.id)}`];
+
+  if (note.leafIndex !== undefined) {
+    parts.push(`leaf ${note.leafIndex}`);
+  }
+
+  if (note.sourceLedger !== undefined) {
+    parts.push(`ledger ${note.sourceLedger}`);
+  }
+
+  if (note.message) {
+    parts.push(`message: ${note.message}`);
+  }
+
+  return parts.join(' · ');
+}
+
+function shortNoteId(value: string): string {
+  if (value.length <= 18) return value;
+  return `${value.slice(0, 8)}…${value.slice(-8)}`;
 }
 
 function transferStartedDetail(

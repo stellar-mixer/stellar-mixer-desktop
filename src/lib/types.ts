@@ -90,6 +90,7 @@ export type ArchiveSyncReport = {
   scannedNullifiers: number;
   importedNoteCount: number;
   spentNoteCount: number;
+  receivedTransferNotes: NoteView[];
 };
 
 export type BackupExportResult = {

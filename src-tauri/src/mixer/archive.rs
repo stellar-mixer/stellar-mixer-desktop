@@ -284,6 +284,7 @@ pub fn empty_report(vault: &VaultPayload) -> ArchiveSyncReport {
         scanned_nullifiers: 0,
         imported_note_count: 0,
         spent_note_count: 0,
+        received_transfer_notes: Vec::new(),
     }
 }
 

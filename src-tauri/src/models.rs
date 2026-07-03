@@ -63,6 +63,9 @@ pub struct ArchiveSyncReport {
     pub scanned_nullifiers: u64,
     pub imported_note_count: usize,
     pub spent_note_count: usize,
+
+    #[serde(default)]
+    pub received_transfer_notes: Vec<NoteView>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

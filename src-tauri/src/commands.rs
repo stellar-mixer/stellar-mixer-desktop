@@ -18,7 +18,7 @@ use crate::mixer::coin_selection::{
 use crate::mixer::flow::{deposit_for_account, transfer_for_identity, withdraw_for_identity};
 use crate::models::{
     ArchiveSyncReport, ArchiveSyncState, BackupExportResult, BackupImportResult, DepositResult,
-    MixerStats, NoteView, PrivateBalance, ProgressEvent, PublicAccount, TransferResult,
+    MixerStats, NoteSecret, NoteView, PrivateBalance, ProgressEvent, PublicAccount, TransferResult,
     UnlockResult, VaultPayload, VaultStatus, WithdrawResult,
 };
 use crate::proofs::note::fixed_be_array;
@@ -588,6 +588,45 @@ pub async fn notes_summary(state: State<'_, AppState>) -> CommandResult<Vec<Note
     Ok(notes)
 }
 
+fn note_view_from_secret(vault: &VaultPayload, note: &NoteSecret) -> NoteView {
+    let account = vault
+        .accounts
+        .iter()
+        .find(|account| account.id == note.account_id);
+
+    NoteView {
+        id: note.id.clone(),
+        deposited_by_account_id: note.account_id.clone(),
+        deposited_by_account_name: account
+            .map(|account| account.name.clone())
+            .unwrap_or_else(|| {
+                if note.account_id == "archive-recovered" {
+                    "Recovered from Mixer Archive".to_string()
+                } else {
+                    "Unknown account".to_string()
+                }
+            }),
+        deposited_by_public_key: account
+            .map(|account| account.stellar_public_key.clone())
+            .unwrap_or_else(|| "unknown".to_string()),
+        amount_stroops: note.value.to_string(),
+        amount_xlm: format_xlm(note.value),
+        leaf_index: note.leaf_index,
+        status: if note.spent {
+            "spent".to_string()
+        } else if note.leaf_index.is_some() {
+            "spendable".to_string()
+        } else {
+            "pending-index".to_string()
+        },
+        created_at: note.created_at,
+        spent_at: note.spent_at,
+        source_kind: note.source_kind.clone(),
+        source_ledger: note.source_ledger,
+        message: note.message.clone(),
+    }
+}
+
 #[tauri::command]
 pub async fn treepir_status() -> CommandResult<MixerStats> {
     let url = format!("{}/ready", TREEPIR_URL.trim_end_matches('/'));
@@ -674,6 +713,7 @@ fn merge_archive_delta(
     delta: ArchiveSyncDelta,
 ) -> ArchiveSyncReport {
     let mut imported_note_count = 0usize;
+    let mut received_transfer_notes = Vec::new();
 
     for mut incoming in delta.recovered_notes {
         if let Some(existing) = vault.notes.iter_mut().find(|note| {
@@ -703,6 +743,10 @@ fn merge_archive_delta(
             }
 
             continue;
+        }
+
+        if incoming.source_kind.as_deref() == Some("TransferReceived") {
+            received_transfer_notes.push(note_view_from_secret(vault, &incoming));
         }
 
         vault.notes.push(incoming);
@@ -740,6 +784,7 @@ fn merge_archive_delta(
         scanned_nullifiers: delta.scanned_nullifiers,
         imported_note_count,
         spent_note_count,
+        received_transfer_notes,
     }
 }
 

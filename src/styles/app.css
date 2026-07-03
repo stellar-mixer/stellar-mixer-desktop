@@ -4545,3 +4545,155 @@ body {
 .transfer-fields {
   margin-top: 0 !important;
 }
+
+
+.incoming-note-panel {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 14px;
+  padding: 14px;
+  border: 1px solid rgba(84, 214, 154, 0.28);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at top left, rgba(84, 214, 154, 0.16), transparent 34%),
+    linear-gradient(135deg, rgba(16, 185, 129, 0.09), rgba(56, 139, 253, 0.11)),
+    rgba(8, 15, 28, 0.76);
+  box-shadow:
+    0 18px 50px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.incoming-note-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.incoming-note-header strong {
+  color: rgba(245, 250, 255, 0.96);
+  font-size: 0.98rem;
+  font-weight: 800;
+}
+
+.incoming-note-header span {
+  min-width: 22px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(84, 214, 154, 0.18);
+  color: rgba(180, 255, 216, 0.96);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.incoming-note-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 14px 14px 15px;
+  border: 1px solid rgba(255, 255, 255, 0.065);
+  border-radius: 17px;
+  background: rgba(5, 12, 22, 0.58);
+}
+
+.incoming-note-card > div:first-child {
+  min-width: 0;
+}
+
+.incoming-note-card > div:first-child strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  color: rgba(241, 255, 247, 0.98);
+  font-size: 1.05rem;
+  font-weight: 850;
+}
+
+.incoming-note-card > div:first-child strong::before {
+  content: "✓";
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(84, 214, 154, 0.19);
+  color: rgba(120, 255, 184, 0.98);
+  font-size: 0.77rem;
+  font-weight: 900;
+}
+
+.incoming-note-card p {
+  margin: 7px 0 0;
+  color: rgba(203, 213, 225, 0.68);
+  font-size: 0.86rem;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.incoming-note-actions {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-shrink: 0;
+}
+
+.incoming-note-view-button,
+.incoming-note-ok-button {
+  height: 38px;
+  border: 0;
+  border-radius: 999px;
+  padding: 0 15px;
+  font-weight: 850;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    transform 120ms ease,
+    filter 120ms ease,
+    background 120ms ease,
+    color 120ms ease;
+}
+
+.incoming-note-view-button {
+  background: rgba(148, 163, 184, 0.12);
+  color: rgba(226, 232, 240, 0.88);
+  border: 1px solid rgba(148, 163, 184, 0.13);
+}
+
+.incoming-note-view-button:hover {
+  background: rgba(148, 163, 184, 0.18);
+  color: rgba(248, 250, 252, 0.96);
+  transform: translateY(-1px);
+}
+
+.incoming-note-ok-button {
+  min-width: 58px;
+  background: rgba(84, 214, 154, 0.96);
+  color: rgba(3, 18, 12, 0.98);
+  box-shadow: 0 8px 22px rgba(84, 214, 154, 0.18);
+}
+
+.incoming-note-ok-button:hover {
+  filter: brightness(1.06);
+  transform: translateY(-1px);
+}
+
+.incoming-note-view-button:active,
+.incoming-note-ok-button:active {
+  transform: translateY(0);
+}
+
+@media (max-width: 760px) {
+  .incoming-note-card {
+    grid-template-columns: 1fr;
+  }
+
+  .incoming-note-actions {
+    justify-content: flex-end;
+  }
+}
