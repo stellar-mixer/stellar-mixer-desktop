@@ -42,18 +42,16 @@ flowchart LR
     User[User] --> Desktop[Stellar Mixer Desktop]
 
     Desktop --> Vault[OS keyring encrypted vault]
-    Desktop --> UIState[IndexedDB UI state]
 
-    Desktop --> RPC[Stellar RPC]
-    Desktop --> Archive[Event server]
-    Desktop --> TreePIR[TreePIR server]
-    Desktop --> Wrap[Groth16 wrapper server]
-    Desktop --> Contract[Mixer contract]
+    Desktop <--> RPC[Stellar RPC]
+    RPC <--> Contract[Mixer contract]
 
-    RPC --> Chain[Stellar testnet ledger]
-    Archive --> Chain
-    TreePIR --> Chain
-    Contract --> Chain
+    Contract <--> EventServer[Event server]
+    Contract <--> TreePIR[TreePIR server]
+
+    Desktop <--> EventServer
+    Desktop <--> TreePIR
+    Desktop <--> Wrap[Groth16 wrapper server]
     Wrap --> Desktop
 ```
 
@@ -204,28 +202,55 @@ The recipient learns about the transfer by syncing encrypted events from the eve
 
 A **note** is the private unit of ownership inside the mixer.
 
-Conceptually:
+Unlike fixed-denomination mixers, Stellar Mixer notes are **not limited to fixed sizes**. A note can represent any supported XLM amount. That means deposits, withdrawals, and transfers are flexible: the user is not forced into predefined buckets such as `1`, `10`, or `100`.
+
+Conceptually, a note contains private data:
 
 ```text
-note secret + value + owner data
-        ↓ hash/commit
-Merkle leaf commitment
+amount
+owner or recipient identity material
+random secret
+nullifier secret
+metadata needed to spend or recover the note
+```
+
+The desktop turns this private note data into a public commitment:
+
+```text
+private note data
+        ↓ cryptographic hash
+leaf commitment
         ↓ append
 Mixer Merkle tree
 ```
 
-The on-chain contract stores commitments and nullifiers. The desktop stores the full note secret in the encrypted vault.
+Only the commitment is stored on-chain. The full note stays inside the user's encrypted local vault.
 
-When spending a note, the zero-knowledge proof shows:
+When a note is spent, the zero-knowledge proof shows:
 
 ```text
-I know a valid note secret
+I know a valid private note
 AND its commitment exists in the Merkle tree
-AND this nullifier is derived from that note
+AND the derived nullifier has not been used before
 AND the value accounting is correct
+AND the requested withdraw/transfer outputs are valid
 ```
 
-without revealing which note is being spent.
+without revealing which historical note is being spent.
+
+Flexible amounts are handled by creating new output notes:
+
+```text
+withdraw:
+  input note(s) → public recipient amount
+                + optional private change note
+
+transfer:
+  input note(s) → recipient private note
+                + optional sender change note
+```
+
+So the mixer does not need fixed buckets. It can support arbitrary user-selected amounts while preserving private ownership through commitments, Merkle roots, nullifiers, and zero-knowledge proofs.
 
 ---
 
@@ -311,61 +336,44 @@ Normal network metadata, such as IP address, timing, and request size, can still
 
 ## Local storage and security
 
-The desktop app has two local storage layers.
+### Secret storage
 
-### 1. Secret storage
+Stellar Mixer Desktop uses the operating system keyring as its secret storage layer.
 
-Secret data is stored in a password-encrypted backend vault.
+On macOS this is the native **Keychain**. On other platforms this maps to the platform keyring or credential store supported by the operating system integration layer. These systems are designed specifically for protecting application secrets and are significantly safer than ordinary application files, frontend storage, or plain local databases.
 
-The app attempts to use the operating system keyring:
+The mixer vault is encrypted before it is stored. The user's vault password is used to derive a strong encryption key, and that derived key is used to decrypt the local mixer vault only after unlock.
 
-```text
-service = stellar-mixer-desktop
-account = main-vault
-```
-
-It also supports an encrypted file fallback:
+The stored payload is therefore not raw plaintext secret material:
 
 ```text
-~/Library/Application Support/Stellar Mixer/vault.enc.json
+vault password
+    ↓ secure key derivation
+vault encryption key
+    ↓ decrypt locally after unlock
+Mixer vault in local Rust memory
 ```
 
-The fallback file is encrypted. Plaintext secrets are only needed after unlock and live in the Rust backend process memory while the app is unlocked.
-
-Secret vault contents include:
+The protected vault contains:
 
 - Mixer Identity private material;
 - Stellar account secret keys;
 - private notes;
-- note secrets and nullifiers;
+- note secrets and nullifier material;
 - archive cursors;
 - recovery-related state.
 
-### 2. Public UI state
-
-Frontend UI state is stored in IndexedDB through Dexie.
-
-Default database:
+This gives two layers of local protection:
 
 ```text
-stellar-mixer-desktop
+operating system keyring protection
+    +
+password-derived mixer vault encryption
 ```
 
-Profile-specific example:
+A passive attacker who only obtains app files or UI-state files should not get usable secret values. Offline brute force is made difficult because the vault password is not used directly as an encryption key; it is passed through a dedicated key-derivation step first.
 
-```text
-stellar-mixer-desktop-test1
-```
-
-This contains UI-level state such as:
-
-- account display names;
-- account roles;
-- cached public balances;
-- operation history;
-- activity feed items.
-
-It must not contain raw secret keys or raw note secrets.
+After unlock, decrypted values live inside the local Rust backend process memory while the app is running. They are not stored in the React frontend state or ordinary browser-style UI storage.
 
 ---
 
@@ -424,7 +432,7 @@ stellar-mixer-desktop
 ├── src
 │   ├── components              # React UI components
 │   ├── lib
-│   │   ├── db.ts               # Dexie IndexedDB UI state
+│   │   ├── db.ts               # Local UI state
 │   │   ├── stellarPublic.ts    # Public Stellar balance reads
 │   │   ├── tauri.ts            # Frontend → Rust invoke bridge
 │   │   └── types.ts            # Shared frontend types
@@ -550,33 +558,6 @@ This is slower to compile, but closer to production runtime performance.
 
 ---
 
-
-
-## Build frontend only
-
-```bash
-npm run build
-```
-
-This checks/builds the React/Vite frontend.
-
----
-
-## Check Rust backend
-
-```bash
-cd src-tauri
-cargo check
-```
-
-Release check:
-
-```bash
-cd src-tauri
-cargo check --release
-```
-
----
 
 ## Build the full desktop app
 
