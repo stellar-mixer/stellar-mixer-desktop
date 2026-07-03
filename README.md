@@ -1,3 +1,5 @@
+<img width="1599" height="872" alt="image" src="https://github.com/user-attachments/assets/814652a2-4584-4332-820b-b73ab29e379a" />
+
 # Stellar Mixer Desktop
 
 <p align="center">
