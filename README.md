@@ -1,55 +1,748 @@
 # Stellar Mixer Desktop
 
-Tauri + React desktop shell for the Stellar RISC0 mixer pipeline.
+<p align="center">
+  <strong>Private Stellar testnet mixer desktop app powered by Tauri, RISC Zero, TreePIR, and Soroban.</strong>
+</p>
 
-## What is implemented
+<p align="center">
+  <img alt="Tauri" src="https://img.shields.io/badge/Tauri-2.x-24C8DB?logo=tauri&logoColor=white">
+  <img alt="React" src="https://img.shields.io/badge/React-UI-61DAFB?logo=react&logoColor=111">
+  <img alt="Rust" src="https://img.shields.io/badge/Rust-backend-black?logo=rust">
+  <img alt="Stellar" src="https://img.shields.io/badge/Stellar-testnet-7D00FF?logo=stellar&logoColor=white">
+  <img alt="RISC Zero" src="https://img.shields.io/badge/RISC%20Zero-ZK%20proofs-15C2CB">
+</p>
 
-- Tauri 2 + React/Vite UI.
-- Rust backend commands.
-- OS keyring storage.
-- Password-encrypted vault with sodiumoxide secretbox + pwhash.
-- Local mixer identity using schnorrkel.
-- Multiple Stellar accounts stored only inside the encrypted backend vault.
-- Public UI state in IndexedDB via Dexie.
-- Deposit command wired to Rust backend: creates note, calls mixer `deposit`, and stores note only after successful tx.
-- Withdraw/transfer command skeletons are split into modules and intentionally emit progress; hook the existing e2e core in `src-tauri/src/mixer/flow.rs` as the next step.
+---
 
-## Requirements
+## What this is
 
-- Rust stable
-- Node.js 20+
-- pnpm or npm
-- Tauri prerequisites for your OS
-- Local TreePIR server on `http://127.0.0.1:3000`
-- Groth16 wrap server on `http://213.171.26.211:8080/wrap`
+**Stellar Mixer Desktop** is a local desktop client for a private Stellar mixer.
 
-## Setup
+It provides a complete user flow for:
 
-```bash
-cd /Users/coolman/Code
-cp -R /path/to/stellar-mixer-desktop ./stellar-mixer-desktop
-cd stellar-mixer-desktop
+- creating and unlocking a local **Mixer Identity**;
+- managing Stellar accounts used for deposits, withdrawals, transfers, and fees;
+- creating private notes;
+- proving deposits, withdrawals, and transfers;
+- syncing encrypted note events from the archive;
+- requesting Merkle paths privately through TreePIR;
+- wrapping RISC Zero receipts into Groth16 receipts;
+- submitting verified operations to a minimal Soroban mixer contract.
 
-git init
-pnpm install
-pnpm tauri dev
+The main rule of the app is simple:
+
+> Private keys, note secrets, nullifiers, and raw vault contents stay local.
+
+---
+
+## System overview
+
+```mermaid
+flowchart LR
+    User[User] --> Desktop[Stellar Mixer Desktop]
+
+    Desktop --> Vault[Encrypted local vault]
+    Desktop --> UIState[IndexedDB UI state]
+
+    Desktop --> RPC[Stellar RPC]
+    Desktop --> TreePIR[TreePIR server]
+    Desktop --> Archive[Event server]
+    Desktop --> Wrap[Groth16 wrapper server]
+
+    RPC --> Chain[(Stellar testnet)]
+    Archive --> Chain
+    TreePIR --> Chain
+    Desktop --> Contract[Mixer contract]
+    Wrap --> Desktop
+    Contract --> Chain
 ```
 
-You can also use npm:
+The mixer is intentionally split into small parts:
+
+| Component | Purpose |
+|---|---|
+| **Desktop app** | Local UI, encrypted vault, proof orchestration, Stellar transaction submission. |
+| **Mixer contract** | Minimal on-chain state: commitments, nullifiers, root history, proof verification. |
+| **TreePIR server** | Serves Merkle path data without learning which path the client needs. |
+| **Event server** | Indexes encrypted note events and nullifiers for sync and recovery. It cannot decrypt user notes. |
+| **Groth16 wrapper server** | Converts a local RISC Zero receipt into a Groth16 receipt accepted by the Stellar verifier stack. |
+| **RISC0 prover guests** | Reproducible guest programs that define the private proof logic. |
+
+---
+
+## Current testnet configuration
+
+These values are configured in `src-tauri/src/config.rs`.
+
+| Name | Value |
+|---|---|
+| Stellar RPC | `https://soroban-rpc.testnet.stellar.gateway.fm` |
+| Mixer contract | `CCO2BNPJQENNYXHYE5JWGNX74SNHZT74V3OL2IFCJOVZHEJVO2KVWEN5` |
+| TreePIR server | `http://213.171.26.211:3000` |
+| Event server | `http://213.171.26.211:3001` |
+| Groth16 wrapper | `http://213.171.26.211:8080/wrap` |
+| Merkle depth | `45` |
+
+RISC Zero guest binaries are stored inside the Tauri project:
+
+```text
+src-tauri/guests/transfer_guest.bin
+src-tauri/guests/withdraw_guest.bin
+```
+
+The image IDs in `src-tauri/src/config.rs` must match the image IDs configured in the deployed mixer contract.
+
+---
+
+## How the mixer works
+
+The mixer turns public Stellar token movement into private note ownership.
+
+```text
+public XLM/account activity
+        ↓
+private mixer notes
+        ↓
+zero-knowledge spend proof
+        ↓
+public withdrawal or private transfer output
+```
+
+### 1. Deposit
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant D as Desktop
+    participant C as Mixer contract
+    participant A as Event server
+
+    U->>D: Deposit XLM amount
+    D->>D: Create private note secret
+    D->>D: Hash note into leaf commitment
+    D->>C: Submit deposit with output leaf
+    C->>C: Append leaf to mixer state
+    C-->>A: Emits encrypted note event
+    D->>D: Store note in encrypted vault
+```
+
+A deposit creates a new private note. The chain sees a commitment leaf, not the local note secret.
+
+The desktop stores the full note in the encrypted vault after the transaction succeeds.
+
+---
+
+### 2. Withdraw
+
+```mermaid
+sequenceDiagram
+    participant D as Desktop
+    participant P as TreePIR server
+    participant W as Groth16 wrapper
+    participant C as Mixer contract
+    participant R as Stellar recipient
+
+    D->>D: Select spendable notes
+    D->>P: Private PIR request for Merkle path
+    P-->>D: Merkle path data
+    D->>D: Build RISC Zero proof locally
+    D->>W: Send receipt for Groth16 wrapping
+    W-->>D: Groth16 receipt
+    D->>C: Submit withdraw proof + nullifier(s)
+    C->>C: Verify proof, root, and nullifier uniqueness
+    C->>R: Transfer public XLM to recipient
+```
+
+A withdraw proves that:
+
+- the input note exists in a known Merkle root;
+- the user knows the note secret;
+- the nullifier is derived correctly;
+- the note was not already spent;
+- the public output amount is valid.
+
+The contract sees nullifiers and proof data, but not the private note secret.
+
+---
+
+### 3. Transfer
+
+```mermaid
+sequenceDiagram
+    participant S as Sender desktop
+    participant A as Event server
+    participant P as TreePIR server
+    participant W as Groth16 wrapper
+    participant C as Mixer contract
+    participant R as Recipient desktop
+
+    S->>S: Select private input notes
+    S->>P: Private PIR request for Merkle paths
+    P-->>S: Merkle path data
+    S->>S: Create recipient note + optional change note
+    S->>S: Encrypt recipient note to recipient Mixer Identity
+    S->>S: Build RISC Zero proof locally
+    S->>W: Wrap RISC Zero receipt into Groth16
+    W-->>S: Groth16 receipt
+    S->>C: Submit transfer proof, nullifiers, output leaves
+    C-->>A: Emits encrypted output notes
+    R->>A: Sync encrypted notes
+    R->>R: Decrypt notes locally
+    R->>R: Show incoming private note notification
+```
+
+A private transfer consumes sender notes and creates new output notes:
+
+- one note for the recipient;
+- optionally one change note back to the sender.
+
+The recipient learns about the transfer by syncing encrypted events from the event server. The event server only stores ciphertext. Only the recipient Mixer Identity can decrypt the recipient note.
+
+---
+
+## What is a note?
+
+A **note** is the private unit of ownership inside the mixer.
+
+Conceptually:
+
+```text
+note secret + value + owner data
+        ↓ hash/commit
+Merkle leaf commitment
+        ↓ append
+Mixer Merkle tree
+```
+
+The on-chain contract stores commitments and nullifiers. The desktop stores the full note secret in the encrypted vault.
+
+When spending a note, the zero-knowledge proof shows:
+
+```text
+I know a valid note secret
+AND its commitment exists in the Merkle tree
+AND this nullifier is derived from that note
+AND the value accounting is correct
+```
+
+without revealing which note is being spent.
+
+---
+
+## Minimal mixer contract
+
+The Soroban mixer contract is intentionally minimal.
+
+It does not store user accounts, plaintext notes, encrypted note contents, or local wallet state.
+
+It only needs to track:
+
+- Merkle roots / root history;
+- output leaf commitments;
+- spent nullifiers;
+- verifier configuration;
+- token movement rules.
+
+That means most heavy logic remains outside the contract:
+
+```text
+Desktop app:
+  note construction
+  encryption/decryption
+  proof generation
+  coin selection
+  vault state
+  archive sync
+
+Infrastructure:
+  Merkle path retrieval
+  encrypted event indexing
+  Groth16 wrapping
+
+Contract:
+  verify proof
+  check nullifier uniqueness
+  update commitment/nullifier state
+  move tokens
+```
+
+---
+
+## Privacy model
+
+The app is designed so that infrastructure servers help with availability and performance without receiving raw secrets.
+
+### TreePIR server
+
+The TreePIR server serves Merkle path data. The client uses private information retrieval so the server should not learn which leaf or sibling indexes are being requested.
+
+The server helps the client build a Merkle proof, but it should not learn:
+
+- selected note leaf index;
+- selected sibling indexes;
+- which path belongs to the user;
+- which note is being spent.
+
+### Event server
+
+The event server indexes:
+
+- encrypted note events;
+- nullifiers;
+- archive cursors.
+
+It cannot decrypt note payloads. The desktop downloads encrypted note batches and tries to decrypt them locally.
+
+### Groth16 wrapper
+
+The Groth16 wrapper receives proof/receipt data and returns a wrapped Groth16 receipt.
+
+It does not receive:
+
+- Stellar secret keys;
+- vault password;
+- raw vault data;
+- plaintext note payloads;
+- decrypted archive contents.
+
+Normal network metadata, such as IP address, timing, and request size, can still exist at the transport layer. For stronger network-level privacy, run through a privacy network, VPN, or self-hosted infrastructure.
+
+---
+
+## Local storage and security
+
+The desktop app has two local storage layers.
+
+### 1. Secret storage
+
+Secret data is stored in a password-encrypted backend vault.
+
+The app attempts to use the operating system keyring:
+
+```text
+service = stellar-mixer-desktop
+account = main-vault
+```
+
+It also supports an encrypted file fallback:
+
+```text
+~/Library/Application Support/Stellar Mixer/vault.enc.json
+```
+
+The fallback file is encrypted. Plaintext secrets are only needed after unlock and live in the Rust backend process memory while the app is unlocked.
+
+Secret vault contents include:
+
+- Mixer Identity private material;
+- Stellar account secret keys;
+- private notes;
+- note secrets and nullifiers;
+- archive cursors;
+- recovery-related state.
+
+### 2. Public UI state
+
+Frontend UI state is stored in IndexedDB through Dexie.
+
+Default database:
+
+```text
+stellar-mixer-desktop
+```
+
+Profile-specific example:
+
+```text
+stellar-mixer-desktop-test1
+```
+
+This contains UI-level state such as:
+
+- account display names;
+- account roles;
+- cached public balances;
+- operation history;
+- activity feed items.
+
+It must not contain raw secret keys or raw note secrets.
+
+---
+
+## Recovery and backup
+
+The app supports two recovery paths.
+
+| Recovery method | What it restores |
+|---|---|
+| **Recovery phrase** | Restores the Mixer Identity and rescans the event archive for decryptable notes. |
+| **Full encrypted backup** | Restores vault data, accounts, notes, cursors, roles, and UI history. |
+
+The recovery phrase is useful when moving identity to a new installation.
+
+The full backup is useful when preserving the complete local app state.
+
+---
+
+## Features
+
+### Deposit
+
+Creates a new private note from public XLM.
+
+```text
+public XLM → private mixer note
+```
+
+### Withdraw
+
+Spends private notes and sends public XLM to a Stellar address.
+
+```text
+private mixer note(s) → public Stellar address
+```
+
+If the selected account does not have enough public XLM for Stellar fees, the app can ask another eligible account to act as fee payer.
+
+### Transfer
+
+Transfers private value to another Mixer Identity.
+
+```text
+sender private note(s) → recipient private note
+                       + optional sender change note
+```
+
+Only the recipient Mixer Identity can decrypt the received note.
+
+---
+
+## Project structure
+
+```text
+stellar-mixer-desktop
+├── src
+│   ├── components              # React UI components
+│   ├── lib
+│   │   ├── db.ts               # Dexie IndexedDB UI state
+│   │   ├── stellarPublic.ts    # Public Stellar balance reads
+│   │   ├── tauri.ts            # Frontend → Rust invoke bridge
+│   │   └── types.ts            # Shared frontend types
+│   ├── styles/app.css
+│   ├── App.tsx
+│   └── main.tsx
+│
+├── src-tauri
+│   ├── guests                  # RISC Zero guest binaries
+│   ├── src
+│   │   ├── mixer               # Archive sync, flow orchestration, coin selection
+│   │   ├── proofs              # Note encoding, transfer/withdraw proof helpers
+│   │   ├── security            # Vault, crypto, identity, local secret handling
+│   │   ├── stellar             # Stellar accounts and contract calls
+│   │   ├── commands.rs         # Tauri command handlers
+│   │   ├── config.rs           # Network, contract, server, guest constants
+│   │   ├── models.rs           # Backend data models
+│   │   └── state.rs            # Runtime app state
+│   ├── Cargo.toml
+│   └── tauri.conf.json
+│
+├── package.json
+├── vite.config.ts
+└── README.md
+```
+
+---
+
+## Prerequisites
+
+### Required for all platforms
+
+Install:
+
+- Rust via `rustup`;
+- Node.js LTS;
+- npm;
+- platform-specific Tauri dependencies.
+
+Check versions:
 
 ```bash
+rustc --version
+cargo --version
+node --version
+npm --version
+```
+
+Official Tauri prerequisites:
+
+```text
+https://v2.tauri.app/start/prerequisites/
+```
+
+### macOS
+
+Install Xcode Command Line Tools:
+
+```bash
+xcode-select --install
+```
+
+Full Xcode is only needed for iOS/mobile development or advanced Apple signing workflows.
+
+### Linux
+
+Install WebKitGTK and native build packages for your distribution.
+
+Debian/Ubuntu example:
+
+```bash
+sudo apt update
+sudo apt install -y \
+  libwebkit2gtk-4.1-dev \
+  build-essential \
+  curl \
+  wget \
+  file \
+  libxdo-dev \
+  libssl-dev \
+  libayatana-appindicator3-dev \
+  librsvg2-dev
+```
+
+### Windows
+
+Install:
+
+- Microsoft C++ Build Tools with **Desktop development with C++**;
+- Microsoft Edge WebView2 Runtime if it is not already installed;
+- Rust MSVC toolchain.
+
+---
+
+## Install dependencies
+
+```bash
+git clone https://github.com/stellar-mixer/stellar-mixer-desktop.git
+cd stellar-mixer-desktop
+
 npm install
+```
+
+---
+
+## Run in development mode
+
+Default dev mode:
+
+```bash
+npm run tauri -- dev
+```
+
+If the project script is available:
+
+```bash
 npm run tauri:dev
 ```
 
-## Security model
+Release-optimized dev mode:
 
-- React never receives private keys, note secrets, nullifiers, or raw vault contents.
-- Public account names/addresses, UI history, and public balances live in IndexedDB.
-- Secret material lives in OS keyring as an encrypted vault blob.
-- Unlock flow decrypts the vault into Rust memory only.
-- Closing the app drops the in-memory session.
+```bash
+npm run tauri -- dev --release
+```
 
-## Constants
+This is slower to compile, but closer to production runtime performance.
 
-See `src-tauri/src/config.rs` for RPC URL, mixer contract id, TreePIR URL, Groth16 URL and guest ELF paths.
+---
+
+## Run isolated test profiles
+
+The app supports storage profiles. This is useful when testing multiple clean identities without deleting the default app state.
+
+```bash
+STELLAR_MIXER_PROFILE=test1 \
+VITE_STELLAR_MIXER_PROFILE=test1 \
+npm run tauri -- dev --release
+```
+
+Another isolated profile:
+
+```bash
+STELLAR_MIXER_PROFILE=test2 \
+VITE_STELLAR_MIXER_PROFILE=test2 \
+npm run tauri -- dev --release
+```
+
+Profile effect:
+
+| Profile | Backend vault | IndexedDB |
+|---|---|---|
+| `default` | `Stellar Mixer/vault.enc.json` | `stellar-mixer-desktop` |
+| `test1` | `Stellar Mixer/test1/vault.enc.json` | `stellar-mixer-desktop-test1` |
+| `test2` | `Stellar Mixer/test2/vault.enc.json` | `stellar-mixer-desktop-test2` |
+
+---
+
+## Run multiple dev windows on different ports
+
+When running more than one Tauri dev instance, give each Vite dev server its own port and match Tauri `devUrl`.
+
+```bash
+STELLAR_MIXER_PROFILE=test1 \
+VITE_STELLAR_MIXER_PROFILE=test1 \
+npm run tauri -- dev --release --config '{"build":{"beforeDevCommand":"npm run dev -- --port 1421 --strictPort","devUrl":"http://localhost:1421"}}'
+```
+
+```bash
+STELLAR_MIXER_PROFILE=test2 \
+VITE_STELLAR_MIXER_PROFILE=test2 \
+npm run tauri -- dev --release --config '{"build":{"beforeDevCommand":"npm run dev -- --port 1422 --strictPort","devUrl":"http://localhost:1422"}}'
+```
+
+---
+
+## Build frontend only
+
+```bash
+npm run build
+```
+
+This checks/builds the React/Vite frontend.
+
+---
+
+## Check Rust backend
+
+```bash
+cd src-tauri
+cargo check
+```
+
+Release check:
+
+```bash
+cd src-tauri
+cargo check --release
+```
+
+---
+
+## Build the full desktop app
+
+```bash
+npm run tauri -- build
+```
+
+Build artifacts are written under:
+
+```text
+src-tauri/target/release/bundle/
+```
+
+On macOS, common outputs are:
+
+```text
+src-tauri/target/release/bundle/macos/Stellar Mixer.app
+src-tauri/target/release/bundle/dmg/*.dmg
+```
+
+Open the built macOS app locally:
+
+```bash
+open "src-tauri/target/release/bundle/macos/Stellar Mixer.app"
+```
+
+---
+
+## Clean local app state
+
+Default profile secret vault:
+
+```bash
+security delete-generic-password -s "stellar-mixer-desktop" -a "main-vault" 2>/dev/null || true
+rm -rf "$HOME/Library/Application Support/Stellar Mixer"
+```
+
+Default Tauri/WebKit/frontend state:
+
+```bash
+rm -rf "$HOME/Library/Application Support/com.samvinchester.stellar-mixer"
+rm -rf "$HOME/Library/Caches/com.samvinchester.stellar-mixer"
+rm -rf "$HOME/Library/WebKit/com.samvinchester.stellar-mixer"
+rm -rf "$HOME/Library/HTTPStorages/com.samvinchester.stellar-mixer"
+rm -rf "$HOME/Library/Saved Application State/com.samvinchester.stellar-mixer.savedState"
+rm -f "$HOME/Library/Preferences/com.samvinchester.stellar-mixer.plist"
+```
+
+For profile-specific vaults:
+
+```bash
+rm -rf "$HOME/Library/Application Support/Stellar Mixer/test1"
+security delete-generic-password -s "stellar-mixer-desktop-test1" -a "main-vault" 2>/dev/null || true
+```
+
+---
+
+## Useful development commands
+
+```bash
+# Install JS dependencies
+npm install
+
+# Run frontend only
+npm run dev
+
+# Run Tauri dev
+npm run tauri -- dev
+
+# Run Tauri dev in release mode
+npm run tauri -- dev --release
+
+# Build frontend
+npm run build
+
+# Check Rust
+cd src-tauri && cargo check
+
+# Build bundled desktop app
+npm run tauri -- build
+```
+
+---
+
+## Important privacy notes
+
+This is a testnet desktop client.
+
+The protocol is designed so that:
+
+- Stellar secret keys stay local;
+- note secrets stay local;
+- raw vault data stays local;
+- event server data is encrypted;
+- Merkle path lookup uses TreePIR;
+- proof generation happens locally;
+- the contract verifies proofs without learning private note contents.
+
+However, normal network metadata such as IP address, timing, and request size can still exist at the transport layer unless the user runs through additional network privacy tooling.
+
+---
+
+## Related repositories
+
+| Repository | Purpose |
+|---|---|
+| `stellar-mixer-contract` | Minimal Soroban mixer contract. |
+| `stellar-mixer-risc0-prover` | Reproducible RISC Zero guest programs and image IDs. |
+| `treepir-core` | Generic TreePIR Rust core library. |
+| `treepir-client` | Generic TreePIR HTTP client. |
+| `stellar-mixer-treepir-server` | Mixer-specific TreePIR Merkle path server. |
+| `stellar-mixer-event-server` | Encrypted note and nullifier archive server. |
+| `risc0-groth16-wrapper-server` | RISC Zero receipt to Groth16 receipt wrapping service. |
+
+---
+
+## Status
+
+This project is currently a testnet implementation.
+
+Use it for development, research, and controlled testing. Do not treat it as audited production privacy infrastructure.
