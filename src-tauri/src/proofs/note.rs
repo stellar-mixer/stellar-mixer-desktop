@@ -14,6 +14,7 @@ pub struct RuntimeNote {
     pub secret: [u8; SECRET_BYTES],
 }
 
+#[allow(dead_code)]
 pub fn create_rsa_owner_key() -> Result<(RsaPrivateKey, [u8; RSA_MODULUS_BYTES])> {
     let mut rng = OsRng;
     let private_key = RsaPrivateKey::new(&mut rng, 2048)?;

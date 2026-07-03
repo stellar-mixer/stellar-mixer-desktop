@@ -29,6 +29,7 @@ pub struct WithdrawJournal {
     pub output_leaf: [u8; 32],
 }
 
+#[allow(dead_code)]
 pub struct WithdrawProofResult {
     pub seal: Vec<u8>,
     pub journal: Vec<u8>,

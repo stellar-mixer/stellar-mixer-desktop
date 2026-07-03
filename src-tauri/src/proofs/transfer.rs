@@ -29,6 +29,7 @@ pub struct TransferJournal {
     pub output_leaves: Vec<[u8; 32]>,
 }
 
+#[allow(dead_code)]
 pub struct TransferProofResult {
     pub seal: Vec<u8>,
     pub journal: Vec<u8>,

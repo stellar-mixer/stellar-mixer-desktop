@@ -9,6 +9,7 @@ use crate::models::VaultPayload;
 pub struct AppState {
     pub session: Mutex<Option<Session>>,
     pub spend_active: Mutex<Option<String>>,
+    #[allow(dead_code)]
     pub account_operations: Mutex<HashSet<String>>,
 }
 
@@ -22,6 +23,7 @@ pub struct SpendOperationGuard<'a> {
     state: &'a AppState,
 }
 
+#[allow(dead_code)]
 pub struct AccountOperationGuard<'a> {
     state: &'a AppState,
     account_id: String,
@@ -52,6 +54,7 @@ impl AppState {
         self.start_spend_operation("transfer")
     }
 
+    #[allow(dead_code)]
     pub fn start_account_operation(
         &self,
         account_id: impl Into<String>,

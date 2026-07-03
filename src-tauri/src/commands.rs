@@ -1173,6 +1173,7 @@ fn emit_progress(
     Ok(())
 }
 
+#[allow(dead_code)]
 fn parse_mixer_identity_modulus(input: &str) -> Result<String> {
     let trimmed = input.trim();
     let raw = trimmed.strip_prefix("smxid1:").unwrap_or(trimmed);

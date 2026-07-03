@@ -41,6 +41,7 @@ pub fn spendable_note_count(notes: &[NoteSecret]) -> usize {
         .count()
 }
 
+#[allow(dead_code)]
 pub fn select_single_note_for_withdraw(
     notes: &[NoteSecret],
     amount: u128,

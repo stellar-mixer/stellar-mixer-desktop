@@ -37,6 +37,7 @@ pub const WITHDRAW_GUEST_ID: [u32; 8] = [
     1733823451,
 ];
 
+#[allow(dead_code)]
 pub const DEFAULT_DEPOSIT_AMOUNT: u128 = 10_000_000;
 
 pub fn storage_profile() -> String {
