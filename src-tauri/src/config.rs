@@ -43,6 +43,7 @@ pub const DEFAULT_DEPOSIT_AMOUNT: u128 = 10_000_000;
 pub fn storage_profile() -> String {
     std::env::var("STELLAR_MIXER_PROFILE")
         .ok()
+        .or_else(|| option_env!("STELLAR_MIXER_BUILD_PROFILE").map(|value| value.to_string()))
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| "default".to_string())
